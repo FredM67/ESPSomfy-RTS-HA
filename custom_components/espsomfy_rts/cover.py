@@ -348,6 +348,8 @@ class ESPSomfyGroup(CoverGroup, ESPSomfyShadeEntity):
 class ESPSomfyShade(ESPSomfyShadeEntity, CoverEntity):
     """A shade that is associated with a controller."""
 
+    _attr_icon: str | None = None
+
     def __init__(self, controller: ESPSomfyController, data) -> None:
         """Initialize a new shade."""
         super().__init__(controller=controller, data=data)
