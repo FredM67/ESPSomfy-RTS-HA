@@ -47,10 +47,18 @@ class ESPSomfyShadeEntity(ESPSomfyEntity):
     @property
     def device_info(self) -> DeviceInfo | None:
         """Device info."""
+        if "shadeId" in self._data:
+            unique_suffix = f"shade_{self._data['shadeId']}"
+        else:
+            unique_suffix = f"group_{self._data['groupId']}"
         return DeviceInfo(
             configuration_url=self.controller.api.get_config_url(),
             identifiers={
-                (DOMAIN, f"{self.controller.unique_id}_shade_{self._data['shadeId']}"),
+                (DOMAIN, f"{self.controller.unique_id}_{unique_suffix}"),
             },
             name=self._data["name"],
+            manufacturer=MANUFACTURER,
+            model=f"ESPSomfy RTS Integration {VERSION}",
+            sw_version=self.controller.version,
+            via_device=(DOMAIN, self.controller.unique_id),
         )
