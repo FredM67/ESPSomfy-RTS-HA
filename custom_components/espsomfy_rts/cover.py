@@ -4,9 +4,12 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 import contextlib
+import logging
 from typing import Any, Final
 
 import voluptuous as vol
+
+_LOGGER = logging.getLogger(__name__)
 
 from homeassistant.components.cover import (
     ATTR_POSITION,
@@ -124,18 +127,19 @@ async def async_setup_entry(
                     int(shade["shadeType"]) == 9 or int(shade["shadeType"]) == 10
                 ):
                     new_shades.append(ESPSomfyShade(controller, shade))
-
-            except KeyError:
-                pass
+            except Exception:
+                _LOGGER.exception("Error setting up shade %s", shade.get("shadeId", "?"))
         if new_shades:
             async_add_entities(new_shades)
 
         new_groups = []
         for group in controller.api.groups:
-            with contextlib.suppress(KeyError):
+            try:
                 new_groups.append(
                     ESPSomfyGroup(hass=hass, controller=controller, data=group)
                 )
+            except Exception:
+                _LOGGER.exception("Error setting up group %s", group.get("groupId", "?"))
         if new_groups:
             async_add_entities(new_groups)
 
