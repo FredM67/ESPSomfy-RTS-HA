@@ -13,7 +13,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import DOMAIN, EVT_CONNECTED, EVT_FWSTATUS, EVT_UPDPROGRESS
+from .const import DOMAIN, EVT_FWSTATUS, EVT_UPDPROGRESS
 from .controller import ESPSomfyController
 from .entity import ESPSomfyEntity
 
@@ -43,8 +43,6 @@ class ESPSomfyRTSUpdateEntity(ESPSomfyEntity, UpdateEntity):
 
     def __init__(self, controller: ESPSomfyController) -> None:
         """Initialize the update entity."""
-        self._controller = controller
-        self._available = True
         self._attr_name = "Firmware Update"
         self._attr_unique_id = f"update_{controller.unique_id}"
         self._update_status = 0
@@ -58,23 +56,16 @@ class ESPSomfyRTSUpdateEntity(ESPSomfyEntity, UpdateEntity):
                 | UpdateEntityFeature.PROGRESS
                 | UpdateEntityFeature.BACKUP
             )
-
         super().__init__(controller=controller, data=None)
 
     def _handle_coordinator_update(self) -> None:
         """Handle updated data from the coordinator."""
-        if self.registry_entry.disabled:
-            return
-        if (
-            self._controller.data["event"] == EVT_CONNECTED
-            and "connected" in self._controller.data
-        ):
-            self._available = bool(self._controller.data["connected"])
-            self.async_write_ha_state()
-        elif self._controller.data["event"] == EVT_FWSTATUS:
+        super()._handle_coordinator_update()
+        data = self.coordinator.data
+        if data.get("event") == EVT_FWSTATUS:
             if (
-                self._controller.check_for_update
-                and self._controller.internet_available
+                self.coordinator.check_for_update
+                and self.coordinator.internet_available
             ):
                 self._attr_supported_features = (
                     UpdateEntityFeature.INSTALL
@@ -87,22 +78,16 @@ class ESPSomfyRTSUpdateEntity(ESPSomfyEntity, UpdateEntity):
                     UpdateEntityFeature.SPECIFIC_VERSION | UpdateEntityFeature.PROGRESS
                 )
             self.async_write_ha_state()
-        elif self.controller.data["event"] == EVT_UPDPROGRESS:
-            d = self.controller.data
-            if "part" in d:
-                if int(d["part"]) == 0:
+        elif data.get("event") == EVT_UPDPROGRESS:
+            if "part" in data:
+                if int(data["part"]) == 0:
                     self._app_progress = 0
-                    self._fw_progress = (int(d["loaded"]) / int(d["total"])) * 100
-                elif int(d["part"]) == 100:
+                    self._fw_progress = (int(data["loaded"]) / int(data["total"])) * 100
+                elif int(data["part"]) == 100:
                     self._fw_progress = 100
-                    self._app_progress = (int(d["loaded"]) / int(d["total"])) * 100
+                    self._app_progress = (int(data["loaded"]) / int(data["total"])) * 100
                 self._total_progress = int((self._fw_progress + self._app_progress) / 2)
                 self.async_write_ha_state()
-
-    @property
-    def available(self) -> bool:
-        """Indicates whether the update entity is available."""
-        return self._available
 
     @property
     def can_install(self) -> bool:
@@ -145,9 +130,8 @@ class ESPSomfyRTSUpdateEntity(ESPSomfyEntity, UpdateEntity):
         """Install an update."""
         success = True
         if backup:
-            success = await self._controller.create_backup()
+            success = await self.coordinator.create_backup()
         if success:
-            # We cast here, we know that the latest_version is supposed to be a string.
             version = cast(str, self.latest_version)
             if version is not None:
-                await self.controller.update_firmware(version)
+                await self.coordinator.update_firmware(version)

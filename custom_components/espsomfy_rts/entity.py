@@ -7,7 +7,7 @@ from typing import Any
 from homeassistant.helpers.entity import DeviceInfo, Entity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN, MANUFACTURER
+from .const import DOMAIN, EVT_CONNECTED, MANUFACTURER
 from .controller import ESPSomfyController
 
 
@@ -18,11 +18,34 @@ class ESPSomfyEntity(CoordinatorEntity[ESPSomfyController], Entity):
         """Initialize the entity."""
         super().__init__(coordinator=controller)
         self.controller = controller
+        self._available = True
 
     @property
     def should_poll(self) -> bool:
         """Indicates that the entity should not poll."""
         return False
+
+    @property
+    def available(self) -> bool:
+        """Indicates whether the entity is available."""
+        return self._available
+
+    def _handle_coordinator_update(self) -> None:
+        """Handle updated data from the coordinator.
+
+        Subclasses must call super()._handle_coordinator_update() first and
+        return early if it returns True (meaning the EVT_CONNECTED event was
+        handled and async_write_ha_state already called).
+        """
+        if self.registry_entry and self.registry_entry.disabled:
+            return
+        data = self.coordinator.data
+        if (
+            data.get("event", "") == EVT_CONNECTED
+            and "connected" in data
+        ):
+            self._available = bool(data["connected"])
+            self.async_write_ha_state()
 
     @property
     def device_info(self) -> DeviceInfo | None:
@@ -39,20 +62,29 @@ class ESPSomfyEntity(CoordinatorEntity[ESPSomfyController], Entity):
 
 
 class ESPSomfyShadeEntity(ESPSomfyEntity):
-    """Base entity for ESPSomfy shades."""
+    """Base entity for ESPSomfy shades and groups."""
 
     def __init__(self, *, data: Any, controller: ESPSomfyController) -> None:
         """Initialize the entity."""
         super().__init__(data=data, controller=controller)
         self._data = data
+        if "shadeId" in data:
+            self._shade_id: int | None = data["shadeId"]
+            self._group_id: int | None = None
+            self._entity_type = "motor"
+        else:
+            self._shade_id = None
+            self._group_id = data["groupId"]
+            self._entity_type = "group"
 
     @property
     def device_info(self) -> DeviceInfo | None:
         """Device info."""
-        if "shadeId" in self._data:
-            unique_suffix = f"shade_{self._data['shadeId']}"
-        else:
-            unique_suffix = f"group_{self._data['groupId']}"
+        unique_suffix = (
+            f"shade_{self._shade_id}"
+            if self._entity_type == "motor"
+            else f"group_{self._group_id}"
+        )
         return DeviceInfo(
             configuration_url=self.controller.api.get_config_url(),
             identifiers={

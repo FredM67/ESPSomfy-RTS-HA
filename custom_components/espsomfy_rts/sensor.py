@@ -24,7 +24,7 @@ from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import dt as dt_util
 
-from .const import DOMAIN, EVT_CONNECTED, EVT_ETHERNET, EVT_MEMSTATUS, EVT_WIFISTRENGTH
+from .const import DOMAIN, EVT_ETHERNET, EVT_MEMSTATUS, EVT_WIFISTRENGTH
 from .controller import ESPSomfyController
 from .entity import ESPSomfyEntity
 
@@ -251,10 +251,7 @@ class ESPSomfyDiagSensor(ESPSomfyEntity, SensorEntity):
     ) -> None:
         """Initialize a new diagnostic sensor."""
         super().__init__(controller=controller, data=data)
-        self._controller = controller
-        self._available = True
         self.events = {}
-
         self._attr_entity_category = cfg.entity_category
         self._attr_unique_id = f"{cfg.key}_{controller.unique_id}"
         self._attr_name = cfg.name
@@ -264,7 +261,7 @@ class ESPSomfyDiagSensor(ESPSomfyEntity, SensorEntity):
         self.events = cfg.events
         self._attr_icon = cfg.icon
         self._attr_native_value = cfg.native_value
-        self._last_recorded = time.time()
+        self._last_recorded = dt_util.utcnow()
         self._min_interval = cfg.min_interval
         self._value_count = cfg.value_count
         self._values = []
@@ -272,16 +269,16 @@ class ESPSomfyDiagSensor(ESPSomfyEntity, SensorEntity):
 
     def _handle_coordinator_update(self) -> None:
         """Handle updated data from the coordinator."""
-        if self.registry_entry.disabled:
-            return
+        super()._handle_coordinator_update()
+        data = self.coordinator.data
         if (
-            "event" in self._controller.data
-            and self._controller.data["event"] in self.events
+            "event" in data
+            and data["event"] in self.events
         ):
-            evt = self.events[self._controller.data["event"]]
-            if evt in self._controller.data:
-                self._values.append(self._controller.data[evt])
-                val = self._controller.data[evt]
+            evt = self.events[data["event"]]
+            if evt in data:
+                self._values.append(data[evt])
+                val = data[evt]
                 if (
                     dt_util.utcnow() > self._last_recorded + timedelta(seconds=self._min_interval)
                     or len(self._values) >= self._value_count
@@ -298,18 +295,6 @@ class ESPSomfyDiagSensor(ESPSomfyEntity, SensorEntity):
                 elif self._attr_native_value is None:
                     self._attr_native_value = val
                     self.async_write_ha_state()
-        elif (
-            self._controller.data.get("event", "") == EVT_CONNECTED
-            and "connected" in self._controller.data
-        ):
-            if self._available != bool(self._controller.data["connected"]):
-                self._available = bool(self._controller.data["connected"])
-                self.async_write_ha_state()
-
-    @property
-    def available(self) -> bool:
-        """Indicates whether the sensor is available."""
-        return self._available
 
     @property
     def should_poll(self) -> bool:
@@ -338,7 +323,6 @@ class ESPSomfyWifiStrengthSensor(ESPSomfyDiagSensor):
             ),
             data=data,
         )
-        self._available = True
 
     @property
     def should_poll(self) -> bool:

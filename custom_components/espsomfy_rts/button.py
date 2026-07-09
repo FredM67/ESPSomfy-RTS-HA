@@ -19,7 +19,7 @@ from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .__init__ import ESPSomfyRTSEntityFeature
-from .const import API_REBOOT, DOMAIN, EVT_CONNECTED
+from .const import API_REBOOT, DOMAIN
 from .controller import ESPSomfyController
 from .entity import ESPSomfyEntity
 
@@ -110,17 +110,14 @@ class ESPSomfyButton(ESPSomfyEntity, ButtonEntity):
         self, controller: ESPSomfyController, cfg: ESPSomfyButtonDescription
     ) -> None:
         """Initialize the reboot entity."""
-        self._controller = controller
         self._attr_device_class = cfg.device_class
         self._attr_name = cfg.name
         self._attr_unique_id = f"{cfg.key}_{controller.unique_id}"
         self._attr_entity_category = cfg.entity_category
         self._attr_icon = cfg.icon
-        self._available = True
         self._action = cfg.action
         self._attr_assumed_state = True
         self._attr_supported_features = cfg.features
-
         super().__init__(controller=controller, data=None)
 
     async def async_press(self) -> None:
@@ -129,21 +126,11 @@ class ESPSomfyButton(ESPSomfyEntity, ButtonEntity):
         if "data" in self._action:
             data = self._action["data"]
         if "service" in self._action:
-            await self._controller.api.put_command(self._action["service"], data)
+            await self.coordinator.api.put_command(self._action["service"], data)
         elif "apimethod" in self._action:
-            method = getattr(self._controller.api, self._action["apimethod"])
+            method = getattr(self.coordinator.api, self._action["apimethod"])
             await method()
 
     def _handle_coordinator_update(self) -> None:
         """Handle updated data from the coordinator."""
-        if self.registry_entry.disabled:
-            return
-        if self._controller.data.get("event", "") == EVT_CONNECTED:
-            if "connected" in self._controller.data:
-                self._available = bool(self._controller.data["connected"])
-                self.async_write_ha_state()
-
-    @property
-    def available(self) -> bool:
-        """Indicates whether the button is available."""
-        return self._available
+        super()._handle_coordinator_update()

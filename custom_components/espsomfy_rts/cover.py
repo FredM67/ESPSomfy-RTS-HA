@@ -733,30 +733,33 @@ class ESPSomfyShade(ESPSomfyShadeEntity, CoverEntity):
                     self._attr_supported_features &= ~CoverEntityFeature.OPEN
                     self._attr_supported_features |= CoverEntityFeature.CLOSE
 
+    def _to_device_position(self, ha_position: int) -> int:
+        """Convert HA position (0=closed, 100=open) to device position."""
+        if self._flip_position:
+            return 100 - ha_position if self._attr_device_class == CoverDeviceClass.AWNING else ha_position
+        return ha_position if self._attr_device_class == CoverDeviceClass.AWNING else 100 - ha_position
+
+    def _to_device_tilt(self, ha_tilt: int) -> int:
+        """Convert HA tilt position to device tilt position."""
+        return ha_tilt if self._flip_position else 100 - ha_tilt
+
     async def async_set_cover_tilt_position(self, **kwargs: Any) -> None:
-        """Set the tilt postion."""
-        if self._flip_position is True:
-            await self._controller.api.position_tilt(
-                self._shade_id, int(kwargs[ATTR_TILT_POSITION])
-            )
-        else:
-            await self._controller.api.position_tilt(
-                self._shade_id, 100 - int(kwargs[ATTR_TILT_POSITION])
-            )
+        """Set the tilt position."""
+        await self._controller.api.position_tilt(
+            self._shade_id, self._to_device_tilt(int(kwargs[ATTR_TILT_POSITION]))
+        )
 
     async def async_open_cover_tilt(self, **kwargs: Any) -> None:
         """Open the tilt position."""
-        if self._flip_position is True:
-            await self._controller.api.position_tilt(self._shade_id, 100)
-        else:
-            await self._controller.api.position_tilt(self._shade_id, 0)
+        await self._controller.api.position_tilt(
+            self._shade_id, self._to_device_tilt(100)
+        )
 
     async def async_close_cover_tilt(self, **kwargs: Any) -> None:
         """Close the tilt position."""
-        if self._flip_position is True:
-            await self._controller.api.position_tilt(self._shade_id, 0)
-        else:
-            await self._controller.api.position_tilt(self._shade_id, 100)
+        await self._controller.api.position_tilt(
+            self._shade_id, self._to_device_tilt(0)
+        )
 
     async def async_stop_cover_tilt(self, **kwargs: Any) -> None:
         """Stop tilting a tilt only shade."""
@@ -764,31 +767,12 @@ class ESPSomfyShade(ESPSomfyShadeEntity, CoverEntity):
 
     async def async_set_cover_position(self, **kwargs: Any) -> None:
         """Set the cover position."""
-        if self._flip_position is True:
-            if self._attr_device_class == CoverDeviceClass.AWNING:
-                await self._controller.api.position_shade(
-                    self._shade_id, 100 - int(kwargs[ATTR_POSITION])
-                )
-            else:
-                await self._controller.api.position_shade(
-                    self._shade_id, int(kwargs[ATTR_POSITION])
-                )
-            return
-        if self._attr_device_class == CoverDeviceClass.AWNING:
-            await self._controller.api.position_shade(
-                self._shade_id, int(kwargs[ATTR_POSITION])
-            )
-        else:
-            await self._controller.api.position_shade(
-                self._shade_id, 100 - int(kwargs[ATTR_POSITION])
-            )
+        await self._controller.api.position_shade(
+            self._shade_id, self._to_device_position(int(kwargs[ATTR_POSITION]))
+        )
 
     async def async_open_cover(self, **kwargs: Any) -> None:
         """Open the cover."""
-        # print(f"Opening Cover id#{self._shade_id}")
-        # This is ridiculous in that we need to invert these
-        # if the type is an awning.
-        # print(f"Opening Cover id#{self._shade_id} {self._attr_device_class}")
         if self.is_toggle:
             if self._direction in (0, 1):
                 await self._controller.api.shade_command(
@@ -801,7 +785,6 @@ class ESPSomfyShade(ESPSomfyShadeEntity, CoverEntity):
 
     async def async_close_cover(self, **kwargs: Any) -> None:
         """Close cover."""
-        # print(f"Closing Cover id#{self._shade_id} {self._attr_device_class}")
         if self.is_toggle:
             await self._controller.api.shade_command(
                 {"shadeId": self._shade_id, "command": "toggle"}
@@ -813,7 +796,6 @@ class ESPSomfyShade(ESPSomfyShadeEntity, CoverEntity):
 
     async def async_stop_cover(self, **kwargs: Any) -> None:
         """Hold cover."""
-        # print(f"Stopping Cover id#{self._shade_id}")
         if self.is_toggle:
             await self._controller.api.shade_command(
                 {"shadeId": self._shade_id, "command": "toggle"}
@@ -823,29 +805,14 @@ class ESPSomfyShade(ESPSomfyShadeEntity, CoverEntity):
 
     async def async_set_current_position(self, **kwargs: Any) -> None:
         """Set the current position for the device without moving it."""
-        if self._flip_position is True:
-            if self._attr_device_class == CoverDeviceClass.AWNING:
-                await self._controller.api.set_current_position(
-                    self._shade_id, 100 - int(kwargs[ATTR_POSITION])
-                )
-            else:
-                await self._controller.api.set_current_position(
-                    self._shade_id, int(kwargs[ATTR_POSITION])
-                )
-            return
-        if self._attr_device_class == CoverDeviceClass.AWNING:
-            await self._controller.api.set_current_position(
-                self._shade_id, int(kwargs[ATTR_POSITION])
-            )
-        else:
-            await self._controller.api.set_current_position(
-                self._shade_id, 100 - int(kwargs[ATTR_POSITION])
-            )
+        await self._controller.api.set_current_position(
+            self._shade_id, self._to_device_position(int(kwargs[ATTR_POSITION]))
+        )
 
     async def async_set_current_tilt_position(self, **kwargs: Any) -> None:
         """Set the current tilt position for the device without moving it."""
         await self._controller.api.set_current_tilt_position(
-            self._shade_id, int(kwargs[ATTR_TILT_POSITION])
+            self._shade_id, self._to_device_tilt(int(kwargs[ATTR_TILT_POSITION]))
         )
 
     async def async_set_sunny(self, **kwargs: Any) -> None:

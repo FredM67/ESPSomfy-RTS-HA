@@ -9,7 +9,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import DOMAIN, EVT_CONNECTED, EVT_GROUPSTATE, EVT_SHADESTATE
+from .const import DOMAIN, EVT_GROUPSTATE, EVT_SHADESTATE
 from .controller import ESPSomfyController
 from .entity import ESPSomfyShadeEntity
 
@@ -48,12 +48,10 @@ async def async_setup_entry(
 
         for group in controller.api.groups:
             try:
-                if "sunSensor" in group:
-                    if group["sunSensor"] is True:
-                        new_entities.append(
-                            ESPSomfySunSwitch(controller=controller, data=group)
-                        )
-
+                if "sunSensor" in group and group["sunSensor"] is True:
+                    new_entities.append(
+                        ESPSomfySunSwitch(controller=controller, data=group)
+                    )
             except KeyError:
                 pass
     if new_entities:
@@ -66,85 +64,53 @@ class ESPSomfySunSwitch(ESPSomfyShadeEntity, SwitchEntity):
     def __init__(self, controller: ESPSomfyController, data) -> None:
         """Initialize a new SunSwitch."""
         super().__init__(controller=controller, data=data)
-        self._controller = controller
-        self._shade_id = None
-        self._group_id = None
         self._attr_icon = "mdi:white-balance-sunny"
         self._attr_name = data["name"]
         self._attr_has_entity_name = False
-        self._sunswitch_type = None
-        self._available = True
-        if "groupId" in data:
-            self._group_id = data["groupId"]
+
+        if self._entity_type == "group":
             self._attr_unique_id = (
                 f"sunswitch_group_{controller.unique_id}_{self._group_id}"
             )
-            self._sunswitch_type = "group"
         else:
-            self._shade_id = data["shadeId"]
             self._attr_unique_id = f"sunswitch_{controller.unique_id}_{self._shade_id}"
-            self._sunswitch_type = "motor"
 
-        if "flags" in data:
-            self._attr_is_on = bool((int(data["flags"]) & 0x01) == 0x01)
-        else:
-            self._attr_is_on = False
+        self._attr_is_on = bool((int(data.get("flags", 0)) & 0x01) == 0x01)
 
     def _handle_coordinator_update(self) -> None:
         """Handle updated data from the coordinator."""
-        if self.registry_entry.disabled:
-            return
+        super()._handle_coordinator_update()
+        data = self.coordinator.data
         if (
-            self._controller.data["event"] == EVT_CONNECTED
-            and "connected" in self._controller.data
+            self._entity_type == "motor"
+            and data.get("shadeId") == self._shade_id
+            and data.get("event") == EVT_SHADESTATE
+            and "flags" in data
         ):
-            self._available = bool(self._controller.data["connected"])
+            self._attr_is_on = bool((int(data["flags"]) & 0x01) == 0x01)
             self.async_write_ha_state()
         elif (
-            self._sunswitch_type == "motor"
-            and "shadeId" in self._controller.data
-            and self._controller.data["shadeId"] == self._shade_id
+            self._entity_type == "group"
+            and data.get("groupId") == self._group_id
+            and data.get("event") == EVT_GROUPSTATE
+            and "flags" in data
         ):
-            if (
-                self._controller.data["event"] == EVT_SHADESTATE
-                and "flags" in self._controller.data
-            ):
-                self._attr_is_on = bool(
-                    (int(self._controller.data["flags"]) & 0x01) == 0x01
-                )
-                self.async_write_ha_state()
-        elif (
-            self._sunswitch_type == "group"
-            and "groupId" in self._controller.data
-            and self._controller.data["groupId"] == self._group_id
-        ):
-            if (
-                self._controller.data["event"] == EVT_GROUPSTATE
-                and "flags" in self._controller.data
-            ):
-                self._attr_is_on = bool(
-                    (int(self._controller.data["flags"]) & 0x01) == 0x01
-                )
-                self.async_write_ha_state()
+            self._attr_is_on = bool((int(data["flags"]) & 0x01) == 0x01)
+            self.async_write_ha_state()
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn the entity on."""
-        if self._sunswitch_type == "motor":
+        if self._entity_type == "motor":
             await self.coordinator.api.sun_flag_on(self._shade_id)
-            return
-        await self.coordinator.api.sun_flag_group_on(self._group_id)
+        else:
+            await self.coordinator.api.sun_flag_group_on(self._group_id)
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn the entity off."""
-        if self._sunswitch_type == "motor":
+        if self._entity_type == "motor":
             await self.coordinator.api.sun_flag_off(self._shade_id)
-            return
-        await self.coordinator.api.sun_flag_group_off(self._group_id)
-
-    @property
-    def available(self) -> bool:
-        """Indicates whether the shade is available."""
-        return self._available
+        else:
+            await self.coordinator.api.sun_flag_group_off(self._group_id)
 
 
 class ESPSomfyBinarySwitch(ESPSomfyShadeEntity, SwitchEntity):
@@ -153,44 +119,23 @@ class ESPSomfyBinarySwitch(ESPSomfyShadeEntity, SwitchEntity):
     def __init__(self, controller: ESPSomfyController, data) -> None:
         """Initialize a new BinarySwitch."""
         super().__init__(controller=controller, data=data)
-        self._controller = controller
-        self._shade_id = None
-        self._group_id = None
         self._attr_name = data["name"]
         self._attr_has_entity_name = False
         self._binaryswitch_type = data["shadeType"]
-        self._shade_id = data["shadeId"]
-        self._available = True
         self._attr_unique_id = f"binaryswitch_{controller.unique_id}_{self._shade_id}"
-        self._flip_commands = False
-        if "flipCommands" in data:
-            self._flip_commands = bool(data["flipCommands"])
-        if "position" in data:
-            self._attr_is_on = bool((int(data["position"])) > 0)
-        else:
-            self._attr_is_on = False
+        self._flip_commands = bool(data.get("flipCommands", False))
+        self._attr_is_on = bool((int(data.get("position", 0))) > 0)
 
     def _handle_coordinator_update(self) -> None:
         """Handle updated data from the coordinator."""
-        if self.registry_entry.disabled:
-            return
+        super()._handle_coordinator_update()
+        data = self.coordinator.data
         if (
-            self._controller.data["event"] == EVT_CONNECTED
-            and "connected" in self._controller.data
+            "position" in data
+            and data.get("shadeId") == self._shade_id
         ):
-            self._available = bool(self._controller.data["connected"])
+            self._attr_is_on = bool((int(data["position"])) > 0)
             self.async_write_ha_state()
-        elif (
-            "position" in self._controller.data
-            and self._controller.data["shadeId"] == self._shade_id
-        ):
-            self._attr_is_on = bool((int(self._controller.data["position"])) > 0)
-            self.async_write_ha_state()
-
-    @property
-    def available(self) -> bool:
-        """Indicates whether the shade is available."""
-        return self._available
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn the entity on."""

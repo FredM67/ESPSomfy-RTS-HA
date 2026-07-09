@@ -7,7 +7,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import DOMAIN, EVT_CONNECTED, EVT_GROUPSTATE, EVT_SHADESTATE
+from .const import DOMAIN, EVT_GROUPSTATE, EVT_SHADESTATE
 from .controller import ESPSomfyController
 from .entity import ESPSomfyShadeEntity
 
@@ -26,169 +26,103 @@ async def async_setup_entry(
             try:
                 if "sunSensor" in shade:
                     if shade["sunSensor"] is True:
-                        new_entities.append(ESPSomfySunSensor(controller, shade))
-                        new_entities.append(ESPSomfyWindSensor(controller, shade))
+                        new_entities.append(ESPSomfyFlagSensor(controller, shade, "sun"))
+                        new_entities.append(ESPSomfyFlagSensor(controller, shade, "wind"))
                     elif "shadeType" in shade:
                         match shade["shadeType"]:
                             case 3:
-                                new_entities.append(
-                                    ESPSomfyWindSensor(controller, shade)
-                                )
-
+                                new_entities.append(ESPSomfyFlagSensor(controller, shade, "wind"))
                 elif "shadeType" in shade:
                     match shade["shadeType"]:
                         case 3:
-                            new_entities.append(ESPSomfySunSensor(controller, shade))
-                            new_entities.append(ESPSomfyWindSensor(controller, shade))
+                            new_entities.append(ESPSomfyFlagSensor(controller, shade, "sun"))
+                            new_entities.append(ESPSomfyFlagSensor(controller, shade, "wind"))
             except KeyError:
                 pass
         for group in controller.api.groups:
             try:
-                if "sunSensor" in group:
-                    if group["sunSensor"] is True:
-                        new_entities.append(ESPSomfySunSensor(controller, group))
-                        new_entities.append(ESPSomfyWindSensor(controller, group))
+                if "sunSensor" in group and group["sunSensor"] is True:
+                    new_entities.append(ESPSomfyFlagSensor(controller, group, "sun"))
+                    new_entities.append(ESPSomfyFlagSensor(controller, group, "wind"))
             except KeyError:
                 pass
     if new_entities:
         async_add_entities(new_entities)
 
 
-class ESPSomfySunSensor(ESPSomfyShadeEntity, BinarySensorEntity):
-    """A sun flag sensor indicating whether there is sun."""
+# Flag bitmasks and config per sensor kind
+_FLAG_CONFIG = {
+    "sun": {
+        "mask": 0x20,
+        "uid_prefix": "sun",
+        "uid_group_prefix": "sun_group",
+        "icon_on": "mdi:weather-sunny",
+        "icon_off": "mdi:weather-sunny-off",
+        "name_suffix": "Sun",
+    },
+    "wind": {
+        "mask": 0x10,
+        "uid_prefix": "wind",
+        "uid_group_prefix": "wind_group",
+        "icon_on": "mdi:wind-power",
+        "icon_off": "mdi:wind-power-outline",
+        "name_suffix": "Wind",
+    },
+}
 
-    def __init__(self, controller: ESPSomfyController, data) -> None:
-        """Initialize a new SunSensor."""
+
+class ESPSomfyFlagSensor(ESPSomfyShadeEntity, BinarySensorEntity):
+    """A binary sensor for sun or wind flag state."""
+
+    def __init__(
+        self, controller: ESPSomfyController, data: dict, kind: str
+    ) -> None:
+        """Initialize a new flag sensor (kind: 'sun' or 'wind')."""
         super().__init__(controller=controller, data=data)
-        self._controller = controller
-        self._shade_id = None
-        self._group_id = None
-        self._sensor_type = None
-        self._available = True
-        if "groupId" in data:
-            self._group_id = data["groupId"]
-            self._attr_unique_id = f"sun_group_{controller.unique_id}_{self._group_id}"
-            self._sensor_type = "group"
-        else:
-            self._shade_id = data["shadeId"]
-            self._attr_unique_id = f"sun_{controller.unique_id}_{self._shade_id}"
-            self._sensor_type = "motor"
+        cfg = _FLAG_CONFIG[kind]
+        self._flag_mask: int = cfg["mask"]
+        self._icon_on: str = cfg["icon_on"]
+        self._icon_off: str = cfg["icon_off"]
         self._attr_name = data["name"]
         self._attr_has_entity_name = False
-        if "flags" in data:
-            self._attr_is_on = bool((int(data["flags"]) & 0x20) == 0x20)
+
+        if self._entity_type == "group":
+            self._attr_unique_id = (
+                f"{cfg['uid_group_prefix']}_{controller.unique_id}_{self._group_id}"
+            )
         else:
-            self._attr_is_on = False
+            self._attr_unique_id = (
+                f"{cfg['uid_prefix']}_{controller.unique_id}_{self._shade_id}"
+            )
+
+        self._attr_is_on = bool((int(data.get("flags", 0)) & self._flag_mask) == self._flag_mask)
 
     def _handle_coordinator_update(self) -> None:
         """Handle updated data from the coordinator."""
+        super()._handle_coordinator_update()
+        data = self.coordinator.data
         if (
-            self._controller.data.get("event", "") == EVT_CONNECTED
-            and "connected" in self._controller.data
-        ):
-            if self._available != bool(self._controller.data["connected"]):
-                self._available = bool(self._controller.data["connected"])
-                self.async_write_ha_state()
-        elif (
-            self._sensor_type == "motor"
-            and "shadeId" in self._controller.data
-            and self._controller.data["shadeId"] == self._shade_id
-            and self._controller.data["event"] == EVT_SHADESTATE
-            and "flags" in self._controller.data
+            self._entity_type == "motor"
+            and data.get("shadeId") == self._shade_id
+            and data.get("event") == EVT_SHADESTATE
+            and "flags" in data
         ) or (
-            self._sensor_type == "group"
-            and "groupId" in self._controller.data
-            and self._controller.data["groupId"] == self._group_id
-            and self._controller.data["event"] == EVT_GROUPSTATE
-            and "flags" in self._controller.data
+            self._entity_type == "group"
+            and data.get("groupId") == self._group_id
+            and data.get("event") == EVT_GROUPSTATE
+            and "flags" in data
         ):
-            if self._attr_is_on != bool(
-                (int(self._controller.data["flags"]) & 0x20) == 0x20
-            ):
-                self._attr_is_on = bool(
-                    (int(self._controller.data["flags"]) & 0x20) == 0x20
-                )
+            new_state = bool((int(data["flags"]) & self._flag_mask) == self._flag_mask)
+            if self._attr_is_on != new_state:
+                self._attr_is_on = new_state
                 self.async_write_ha_state()
 
     @property
     def icon(self) -> str:
-        """The icon for the sun sensor."""
-        if self.is_on:
-            return "mdi:weather-sunny"
-        return "mdi:weather-sunny-off"
-
-    @property
-    def available(self) -> bool:
-        """Indicates whether the shade is available."""
-        return self._available
+        """Icon depending on sensor state."""
+        return self._icon_on if self.is_on else self._icon_off
 
 
-class ESPSomfyWindSensor(ESPSomfyShadeEntity, BinarySensorEntity):
-    """A wind sensor indicating whether it is windy."""
-
-    def __init__(self, controller: ESPSomfyController, data) -> None:
-        """Initialize a new WindSensor."""
-        super().__init__(controller=controller, data=data)
-        self._controller = controller
-        self._shade_id = None
-        self._group_id = None
-        self._sensor_type = None
-        self._available = True
-        if "groupId" in data:
-            self._group_id = data["groupId"]
-            self._attr_unique_id = f"wind_group_{controller.unique_id}_{self._group_id}"
-            self._sensor_type = "group"
-        else:
-            self._shade_id = data["shadeId"]
-            self._attr_unique_id = f"wind_{controller.unique_id}_{self._shade_id}"
-            self._sensor_type = "motor"
-        self._attr_name = data["name"]
-        self._attr_has_entity_name = False
-        if "flags" in data:
-            self._attr_is_on = bool((int(data["flags"]) & 0x10) == 0x10)
-        else:
-            self._attr_is_on = False
-
-    def _handle_coordinator_update(self) -> None:
-        """Handle updated data from the coordinator."""
-        if self.registry_entry.disabled:
-            return
-        if (
-            self._controller.data["event"] == EVT_CONNECTED
-            and "connected" in self._controller.data
-        ):
-            if self._available != bool(self._controller.data["connected"]):
-                self._available = bool(self._controller.data["connected"])
-                self.async_write_ha_state()
-        elif (
-            self._sensor_type == "motor"
-            and "shadeId" in self._controller.data
-            and self._controller.data["shadeId"] == self._shade_id
-            and self._controller.data["event"] == EVT_SHADESTATE
-            and "flags" in self._controller.data
-        ) or (
-            self._sensor_type == "group"
-            and "groupId" in self._controller.data
-            and self._controller.data["groupId"] == self._group_id
-            and self._controller.data["event"] == EVT_GROUPSTATE
-            and "flags" in self._controller.data
-        ):
-            if self._attr_is_on != bool(
-                (int(self._controller.data["flags"]) & 0x10) == 0x10
-            ):
-                self._attr_is_on = bool(
-                    (int(self._controller.data["flags"]) & 0x10) == 0x10
-                )
-                self.async_write_ha_state()
-
-    @property
-    def icon(self) -> str:
-        """The icon for the entity."""
-        if self.is_on:
-            return "mdi:wind-power"
-        return "mdi:wind-power-outline"
-
-    @property
-    def available(self) -> bool:
-        """Indicates whether the shade is available."""
-        return self._available
+# Keep old class names as aliases for backwards compatibility
+ESPSomfySunSensor = lambda controller, data: ESPSomfyFlagSensor(controller, data, "sun")  # noqa: E731
+ESPSomfyWindSensor = lambda controller, data: ESPSomfyFlagSensor(controller, data, "wind")  # noqa: E731
