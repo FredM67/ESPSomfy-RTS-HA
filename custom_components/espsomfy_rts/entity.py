@@ -7,7 +7,7 @@ from typing import Any
 from homeassistant.helpers.entity import DeviceInfo, Entity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN, MANUFACTURER, VERSION
+from .const import DOMAIN, MANUFACTURER
 from .controller import ESPSomfyController
 
 
@@ -32,7 +32,7 @@ class ESPSomfyEntity(CoordinatorEntity[ESPSomfyController], Entity):
             identifiers={(DOMAIN, self.controller.unique_id)},
             name=self.controller.device_name,
             manufacturer=MANUFACTURER,
-            model=f"ESPSomfy RTS Integration {VERSION}",
+            model=self.controller.model,
             sw_version=self.controller.version,
             hw_version=None,
         )
@@ -60,7 +60,7 @@ class ESPSomfyShadeEntity(ESPSomfyEntity):
             },
             name=self._data["name"],
             manufacturer=MANUFACTURER,
-            model=f"ESPSomfy RTS Integration {VERSION}",
+            model=self.controller.model,
             sw_version=self.controller.version,
             via_device=(DOMAIN, self.controller.unique_id),
         )
