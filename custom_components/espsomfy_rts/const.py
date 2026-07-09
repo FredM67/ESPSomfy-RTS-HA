@@ -32,7 +32,7 @@ EVT_ETHERNET = "ethernet"
 EVT_MEMSTATUS = "memStatus"
 
 ATTR_RESTOREFILE = "Restore File"
-ATTR_AVAILABLE_MODES = "???"
+ATTR_AVAILABLE_MODES = "available_modes"
 
 PLATFORMS: list[Platform] = [
     Platform.BINARY_SENSOR,

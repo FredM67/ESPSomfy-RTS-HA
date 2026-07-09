@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import statistics
-import time
+from datetime import timedelta
+from typing import Any
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
@@ -21,6 +22,7 @@ from homeassistant.const import (
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN, EVT_CONNECTED, EVT_ETHERNET, EVT_MEMSTATUS, EVT_WIFISTRENGTH
 from .controller import ESPSomfyController
@@ -33,7 +35,7 @@ class ESPSomfyDiagSensorDescription(SensorEntityDescription):
 
     id: str | None = None
     events: dict | None = None
-    native_value: any | None = None
+    native_value: Any | None = None
     min_interval: int = 0
     value_count: int = 1
 
@@ -281,7 +283,7 @@ class ESPSomfyDiagSensor(ESPSomfyEntity, SensorEntity):
                 self._values.append(self._controller.data[evt])
                 val = self._controller.data[evt]
                 if (
-                    time.time() > self._last_recorded + self._min_interval
+                    dt_util.utcnow() > self._last_recorded + timedelta(seconds=self._min_interval)
                     or len(self._values) >= self._value_count
                     or not self._available
                 ):
@@ -289,7 +291,7 @@ class ESPSomfyDiagSensor(ESPSomfyEntity, SensorEntity):
                     if self._value_count > 1:
                         val = int(statistics.median(self._values))
                     self._values.clear()
-                    self._last_recorded = time.time()
+                    self._last_recorded = dt_util.utcnow()
                     if val != self._attr_native_value:
                         self._attr_native_value = val
                         self.async_write_ha_state()
@@ -297,7 +299,7 @@ class ESPSomfyDiagSensor(ESPSomfyEntity, SensorEntity):
                     self._attr_native_value = val
                     self.async_write_ha_state()
         elif (
-            self._controller.data["event"] == EVT_CONNECTED
+            self._controller.data.get("event", "") == EVT_CONNECTED
             and "connected" in self._controller.data
         ):
             if self._available != bool(self._controller.data["connected"]):

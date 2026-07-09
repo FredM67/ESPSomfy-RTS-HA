@@ -63,6 +63,8 @@ class ESPSomfyRTSUpdateEntity(ESPSomfyEntity, UpdateEntity):
 
     def _handle_coordinator_update(self) -> None:
         """Handle updated data from the coordinator."""
+        if self.registry_entry.disabled:
+            return
         if (
             self._controller.data["event"] == EVT_CONNECTED
             and "connected" in self._controller.data
@@ -99,12 +101,13 @@ class ESPSomfyRTSUpdateEntity(ESPSomfyEntity, UpdateEntity):
 
     @property
     def available(self) -> bool:
-        """Indicates whether the shade is available."""
+        """Indicates whether the update entity is available."""
         return self._available
 
     @property
     def can_install(self) -> bool:
         """Indicates whether the current version supports firmware installation."""
+        return self.latest_version is not None and self.latest_version != self.installed_version
 
     @property
     def installed_version(self) -> str | None:

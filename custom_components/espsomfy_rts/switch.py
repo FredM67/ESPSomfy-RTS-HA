@@ -27,7 +27,7 @@ async def async_setup_entry(
         for shade in controller.api.shades:
             try:
                 if "shadeType" in shade and (
-                    int(shade["shadeType"]) == 9 or int(shade["shadeType"] == 10)
+                    int(shade["shadeType"]) == 9 or int(shade["shadeType"]) == 10
                 ):
                     new_entities.append(
                         ESPSomfyBinarySwitch(controller=controller, data=shade)
@@ -92,6 +92,8 @@ class ESPSomfySunSwitch(ESPSomfyShadeEntity, SwitchEntity):
 
     def _handle_coordinator_update(self) -> None:
         """Handle updated data from the coordinator."""
+        if self.registry_entry.disabled:
+            return
         if (
             self._controller.data["event"] == EVT_CONNECTED
             and "connected" in self._controller.data

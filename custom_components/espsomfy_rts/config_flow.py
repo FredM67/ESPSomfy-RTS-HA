@@ -18,7 +18,6 @@ from homeassistant.const import (
 )
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.data_entry_flow import FlowResult
-from homeassistant.helpers import aiohttp_client
 from homeassistant.helpers.selector import (
     TextSelector,
     TextSelectorConfig,
@@ -44,18 +43,6 @@ DATA_SCHEMA = vol.Schema(
 )
 
 _LOGGER = logging.getLogger(__name__)
-
-
-async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str, Any]:
-    """Validate the user input allows us to connect."""
-
-    session = aiohttp_client.async_get_clientsession(hass)
-    async with session.get(f'http://{data["host"]}/discovery') as resp:
-        if resp.status == 200:
-            pass
-        else:
-            raise DiscoveryError(f"{await resp.text()}")
-    return {"title": "ESPSomfy RTS", "server_id": "A1"}
 
 
 # The ConfigFlow is only accessed when first setting up the integration.  This simply

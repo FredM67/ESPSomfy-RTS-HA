@@ -34,7 +34,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     hass.config_entries.async_update_entry(entry, title=api.deviceName)
 
-    # entry.title = api.deviceName
     async def _async_ws_close(_: Event) -> None:
         await controller.ws_close()
 
@@ -42,8 +41,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     entry.async_on_unload(
         hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, _async_ws_close)
     )
-    # This does not occur until the socket connects.
-    # await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     await controller.ws_connect()
 
     return True

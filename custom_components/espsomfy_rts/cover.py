@@ -184,7 +184,7 @@ async def async_setup_entry(
 
 
 class ESPSomfyGroup(CoverGroup, ESPSomfyShadeEntity):
-    """A grpi[] that is associated with a controller."""
+    """A group that is associated with a controller."""
 
     def __init__(
         self, hass: HomeAssistant, controller: ESPSomfyController, data
@@ -232,10 +232,6 @@ class ESPSomfyGroup(CoverGroup, ESPSomfyShadeEntity):
                     if entity.unique_id == f"{self._controller.unique_id}_{cover_id}"
                 ]
             )
-            # Supposedly according to ruff the above is more readable and succinct.
-            # for cover_id in self._linked_shade_ids:
-            #    if entity.unique_id == f"{self._controller.unique_id}_{cover_id}":
-            #        shade_ids.append(entity.entity_id)
         super().__init__(unique_id=uuid, name=data["name"], entities=shade_ids)
 
     async def async_added_to_hass(self) -> None:
@@ -294,16 +290,16 @@ class ESPSomfyGroup(CoverGroup, ESPSomfyShadeEntity):
         return False
 
     @property
-    def icon(self) -> str:
+    def icon(self) -> str | None:
         """Icon for the group."""
-        if hasattr(self, "_attr_icon"):
+        if self._attr_icon is not None:
             return self._attr_icon
         return "mdi:table-multiple"
 
     async def async_open_cover(self, **kwargs: Any) -> None:
         """Open the cover."""
         if self._process_individual:
-            await super().async_open_cover(kwargs=kwargs)
+            await super().async_open_cover(**kwargs)
         elif self._flip_position:
             await self._controller.api.close_group(self._group_id)
         else:
@@ -312,7 +308,7 @@ class ESPSomfyGroup(CoverGroup, ESPSomfyShadeEntity):
     async def async_close_cover(self, **kwargs: Any) -> None:
         """Close cover."""
         if self._process_individual:
-            await super().async_close_cover(kwargs=kwargs)
+            await super().async_close_cover(**kwargs)
         elif self._flip_position:
             await self._controller.api.open_group(self._group_id)
         else:
@@ -320,7 +316,6 @@ class ESPSomfyGroup(CoverGroup, ESPSomfyShadeEntity):
 
     async def async_stop_cover(self, **kwargs: Any) -> None:
         """Hold cover."""
-        # print(f"Stopping Cover id#{self._shade_id}")
         await self._controller.api.stop_group(self._group_id)
 
     async def async_send_command(self, **kwargs: Any) -> None:
@@ -432,7 +427,6 @@ class ESPSomfyShade(ESPSomfyShadeEntity, CoverEntity):
                     self._attr_device_class = CoverDeviceClass.SHADE
 
         self._attr_is_closed: bool = False
-        # print(f"Set up shade {self._attr_unique_id} - {self._attr_name}")
 
     def _handle_state_update(self, data) -> None:
         """Handle the state update."""
@@ -602,11 +596,11 @@ class ESPSomfyShade(ESPSomfyShadeEntity, CoverEntity):
         return False
 
     @property
-    def icon(self) -> str:
+    def icon(self) -> str | None:
         """Icon for the shade."""
-        if hasattr(self, "_attr_icon"):
+        if self._attr_icon is not None:
             return self._attr_icon
-        if hasattr(self, "entity_description"):
+        if hasattr(self, "entity_description") and self.entity_description is not None:
             return self.entity_description.icon
         if self._attr_device_class == CoverDeviceClass.AWNING:
             if self.is_closed:

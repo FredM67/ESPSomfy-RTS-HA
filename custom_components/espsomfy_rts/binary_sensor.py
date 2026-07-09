@@ -83,7 +83,7 @@ class ESPSomfySunSensor(ESPSomfyShadeEntity, BinarySensorEntity):
     def _handle_coordinator_update(self) -> None:
         """Handle updated data from the coordinator."""
         if (
-            self._controller.data["event"] == EVT_CONNECTED
+            self._controller.data.get("event", "") == EVT_CONNECTED
             and "connected" in self._controller.data
         ):
             if self._available != bool(self._controller.data["connected"]):
@@ -124,10 +124,10 @@ class ESPSomfySunSensor(ESPSomfyShadeEntity, BinarySensorEntity):
 
 
 class ESPSomfyWindSensor(ESPSomfyShadeEntity, BinarySensorEntity):
-    """A sun flag sensor indicating whether there is sun."""
+    """A wind sensor indicating whether it is windy."""
 
     def __init__(self, controller: ESPSomfyController, data) -> None:
-        """Initialize a new SunSensor."""
+        """Initialize a new WindSensor."""
         super().__init__(controller=controller, data=data)
         self._controller = controller
         self._shade_id = None

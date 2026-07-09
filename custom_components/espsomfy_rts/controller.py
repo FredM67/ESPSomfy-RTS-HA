@@ -103,7 +103,7 @@ class SocketListener(threading.Thread):
 
     async def connect(self):
         """Start up the web socket."""
-        self.main_loop = asyncio.get_event_loop()
+        self.main_loop = asyncio.get_running_loop()
         self.ws_app = websocket.WebSocketApp(
             self.url,
             on_message=self.ws_onmessage,
@@ -119,7 +119,6 @@ class SocketListener(threading.Thread):
         if self._connect_timer is not None:
             self._connect_timer.cancel()
         self.reconnects = self.reconnects + 1
-        self.main_loop = asyncio.get_event_loop()
         try:
             self.ws_app = websocket.WebSocketApp(
                 self.url,
@@ -133,17 +132,11 @@ class SocketListener(threading.Thread):
             self._connect_timer = None
             self.connected = True
 
-        except websocket.WebSocketAddressException:
-            self._connect_timer = Timer(
-                min(10 * self.reconnects / 2, 20), self.reconnect
-            )
-            self._connect_timer.start()
-        except websocket.WebSocketTimeoutException:
-            self._connect_timer = Timer(
-                min(10 * self.reconnects / 2, 20), self.reconnect
-            )
-            self._connect_timer.start()
-        except websocket.WebSocketConnectionClosedException:
+        except (
+            websocket.WebSocketAddressException,
+            websocket.WebSocketTimeoutException,
+            websocket.WebSocketConnectionClosedException,
+        ):
             self._connect_timer = Timer(
                 min(10 * self.reconnects / 2, 20), self.reconnect
             )
@@ -160,18 +153,15 @@ class SocketListener(threading.Thread):
     def ws_begin(self) -> None:
         """Begin the socket."""
         self.running_future = self.ws_app.run_forever(ping_interval=20, ping_timeout=15)
-        # print("Fell out of run_runforever")
         if not self._should_stop:
             self.hass.loop.call_soon_threadsafe(self.reconnect)
 
     def ws_onerror(self, wsapp, exception):
         """Socket error."""
-        # print(f"We have an error {exception}")
         self.hass.loop.call_soon_threadsafe(self.onerror, exception)
 
     def ws_onclose(self, wsapp, status, msg):
         """Socket closed."""
-        # print(f"The socket was closed {status}")
         self.connected = False
         if not self._should_stop:
             self.hass.loop.call_soon_threadsafe(self.onclose)
@@ -191,7 +181,6 @@ class SocketListener(threading.Thread):
                 event = message[3:ndx]
                 if not self.filter or event in self.filter:
                     payload = message[ndx + 1 : -1]
-                    # print(f"Event:{event} Payload:{payload}")
                     data = json.loads(payload)
                     data["event"] = event
                     self.hass.loop.call_soon_threadsafe(self.onpacket, data)
@@ -199,7 +188,7 @@ class SocketListener(threading.Thread):
                 self.reconnects = 0
                 self.connected = True
         except Exception as e:
-            _LOGGER.debug(e.message)
+            _LOGGER.debug("WebSocket message error: %s", e)
             raise
 
 
@@ -312,7 +301,7 @@ class ESPSomfyController(DataUpdateCoordinator):
         if self.api.get_host() != host:
             # Tear down the socket
             self.api.set_host(host)
-            self.ws_connect()
+            await self.ws_connect()
 
     def ensure_group_configured(self, data):
         """Ensure the group exists on Home Assistant."""
@@ -403,12 +392,6 @@ class ESPSomfyController(DataUpdateCoordinator):
 
     def ws_onpacket(self, data):
         """Packet from the websocket."""
-        # Below doesn't work.  Near as I can tell there is no
-        # real way of adding an entity on the fly.  All this
-        # does is add an entity that is not really attached.
-        # if data["event"] == EVT_SHADEADDED:
-        #    self.ensure_shade_configured(data)
-
         # Catch the fwStatus messages before they go anywhere
         # this will allow us to simply update the latest firmware
         if "event" in data and data["event"] == EVT_FWSTATUS:
@@ -425,8 +408,7 @@ class ESPSomfyController(DataUpdateCoordinator):
             self.async_set_updated_data(data=data)
         else:
             _LOGGER.debug("ESPSomfy RTS configuring entities")
-            loop = asyncio.get_event_loop()
-            coro = loop.create_task(self.api.get_initial())
+            coro = self.hass.loop.create_task(self.api.get_initial())
 
             def handle_connected(_coro):
                 data = {"event": EVT_CONNECTED, "connected": True}
@@ -645,7 +627,7 @@ class ESPSomfyAPI:
                 if resp.status != 200:
                     return False
 
-                os.makedirs(self.backup_dir, exist_ok=True)
+                await asyncio.to_thread(os.makedirs, self.backup_dir, exist_ok=True)
 
                 data = await resp.text(encoding=None)
                 local_dt = dt_util.as_local(datetime.now(dt_util.UTC))
@@ -726,8 +708,9 @@ class ESPSomfyAPI:
                 data = await resp.json()
                 self.apply_data(data)
                 return data
-            _LOGGER.error(await resp.text())
-            raise DiscoveryError(f"{url} - {await resp.text()}")
+            error_text = await resp.text()
+            _LOGGER.error(error_text)
+            raise DiscoveryError(f"{url} - {error_text}")
 
     async def load_shades(self) -> Any | None:
         """Load all the shades from the controller."""
@@ -867,8 +850,9 @@ class ESPSomfyAPI:
                         raise LoginError(CONF_HOST, "invalid_login")
 
                 else:
-                    _LOGGER.error("Error logging in: %s", await resp.text())
-                    raise LoginError(f"{self._api_url} - {await resp.text()}")
+                    error_text = await resp.text()
+                    _LOGGER.error("Error logging in: %s", error_text)
+                    raise LoginError(f"{self._api_url} - {error_text}")
 
     async def group_command(self, data):
         """Send commands to ESPSomfyRTS via PUT request."""

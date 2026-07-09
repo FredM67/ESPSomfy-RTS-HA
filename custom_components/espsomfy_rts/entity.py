@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from homeassistant.helpers.entity import DeviceInfo, Entity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -10,9 +12,9 @@ from .controller import ESPSomfyController
 
 
 class ESPSomfyEntity(CoordinatorEntity[ESPSomfyController], Entity):
-    """Base entitly for the ESPSomfy controller."""
+    """Base entity for the ESPSomfy controller."""
 
-    def __init__(self, *, data: any, controller: ESPSomfyController) -> None:
+    def __init__(self, *, data: Any, controller: ESPSomfyController) -> None:
         """Initialize the entity."""
         super().__init__(coordinator=controller)
         self.controller = controller
@@ -39,7 +41,7 @@ class ESPSomfyEntity(CoordinatorEntity[ESPSomfyController], Entity):
 class ESPSomfyShadeEntity(ESPSomfyEntity):
     """Base entity for ESPSomfy shades."""
 
-    def __init__(self, *, data: any, controller: ESPSomfyController) -> None:
+    def __init__(self, *, data: Any, controller: ESPSomfyController) -> None:
         """Initialize the entity."""
         super().__init__(data=data, controller=controller)
         self._data = data
