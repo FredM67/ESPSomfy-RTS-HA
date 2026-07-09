@@ -68,14 +68,9 @@ class ESPSomfyShadeEntity(ESPSomfyEntity):
         """Initialize the entity."""
         super().__init__(data=data, controller=controller)
         self._data = data
-        if "shadeId" in data:
-            self._shade_id: int | None = data["shadeId"]
-            self._group_id: int | None = None
-            self._entity_type = "motor"
-        else:
-            self._shade_id = None
-            self._group_id = data["groupId"]
-            self._entity_type = "group"
+        self._shade_id: int | None = data.get("shadeId")
+        self._group_id: int | None = data.get("groupId")
+        self._entity_type = "group" if "groupId" in data else "motor"
 
     @property
     def device_info(self) -> DeviceInfo | None:

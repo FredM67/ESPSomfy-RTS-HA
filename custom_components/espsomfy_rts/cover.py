@@ -190,11 +190,15 @@ class ESPSomfyGroup(CoverGroup, ESPSomfyShadeEntity):
         self, hass: HomeAssistant, controller: ESPSomfyController, data
     ) -> None:
         """Initialize a group."""
-        ESPSomfyShadeEntity.__init__(self=self, controller=controller, data=data)
         self._hass = hass
         self._attr_available = True
         self._controller = controller
+        self.controller = controller
+        self._available = True
         self._group_id = data["groupId"]
+        self._shade_id = None
+        self._entity_type = "group"
+        self._data = data
         self._attr_device_class = CoverDeviceClass.SHADE
         self._linked_shade_ids = []
         self._flip_position = False
